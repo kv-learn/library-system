@@ -1,4 +1,7 @@
 
+using LibraryApi.Data;
+using Microsoft.EntityFrameworkCore;
+
 namespace LibraryApi
 {
     public class Program
@@ -8,10 +11,14 @@ namespace LibraryApi
             var builder = WebApplication.CreateBuilder(args);
 
             // Add services to the container.
-
             builder.Services.AddControllers();
-            // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
             builder.Services.AddOpenApi();
+            builder.Services.AddDbContext<LibraryDbContext>(options =>
+            {
+                var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+                options.UseSqlite(connectionString);
+            }, ServiceLifetime.Scoped);
+
 
             var app = builder.Build();
 
