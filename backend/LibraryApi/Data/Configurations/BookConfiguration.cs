@@ -8,8 +8,6 @@ public class BookConfiguration : IEntityTypeConfiguration<Book>
 {
     public void Configure(EntityTypeBuilder<Book> builder)
     {
-        builder.HasKey(b => b.Id);
-
         // ISBN-13, stored as digits only (no hyphens)
         builder.Property(b => b.Isbn)
             .IsRequired()

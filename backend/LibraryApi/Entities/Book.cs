@@ -1,5 +1,3 @@
-using System;
-
 namespace LibraryApi.Entities;
 public class Book
 {
@@ -9,8 +7,5 @@ public class Book
     public string? Description { get; set; }
     public int TotalCopies { get; set; }
     public int AvailableCopies { get; set; }
-    public int PublishedYear { get; set; }
-
-
-
+    public int? PublishedYear { get; set; }
 }
