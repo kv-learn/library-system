@@ -1,4 +1,4 @@
-
+using LibraryApi.Services;
 using LibraryApi.Data;
 using LibraryApi.Data.Seeding;
 using Microsoft.EntityFrameworkCore;
@@ -29,6 +29,7 @@ namespace LibraryApi
             }
 
             }, ServiceLifetime.Scoped);
+            builder.Services.AddScoped<BookService>();
 
 
             var app = builder.Build();
