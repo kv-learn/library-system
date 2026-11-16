@@ -9,7 +9,7 @@
 - [x] **3. Authors + Genres**: many-to-many join tables, second migration,
       read the generated migration.
 - [x] **4. Members + RefreshTokens**: unique NOCASE email, cascade delete.
-- [ ] **5. Reservations, Loans, Reviews**: check constraints, filtered unique
+- [x] **5. Reservations, Loans, Reviews**: check constraints, filtered unique
       index, concurrency token.
 - [ ] **6. Seeding**: HasData vs UseSeeding/UseAsyncSeeding.
 - [ ] **7. Services + controllers**: BooksController, ReservationsController,
@@ -18,7 +18,7 @@
 - [ ] **9. Vue frontend** (VS Code).
 
 ## Current status
-Steps 1-4 done. Next: Step 5 (Reservations, Loans, Reviews).
+Steps 1-5 done. Next: Step 6 (Seeding).
 
 Choices made along the way:
 - Primary keys are `Guid` (stored as TEXT in SQLite). Use the same key type for every table.
@@ -46,6 +46,21 @@ Choices made along the way:
 - Refresh tokens store only a SHA-256 hash (`TokenHash`, unique), never the raw token.
   `IsRevoked` is computed from `RevokedAt` (one source of truth, no column).
   Member → RefreshTokens is cascade delete.
+- Reservations / Loans / Reviews (all `IHasCreatedAt`; `Loan.CreatedAt` = borrowed at):
+  - `ReservationStatus` (Active, Fulfilled, Cancelled, Expired) stored as a string;
+    `Reservation.ExpiresAt` = pickup deadline.
+  - One **Active** reservation per member+book (unique index filtered on
+    `"Status" = 'Active'`); one **open** loan per member+book (filtered on
+    `"ReturnedAt" IS NULL`); one review per member+book (plain unique index).
+  - Check constraints: `Rating BETWEEN 1 AND 5`; `DueAt > CreatedAt`;
+    `ReturnedAt IS NULL OR ReturnedAt >= CreatedAt`; on Books
+    `TotalCopies >= 0` and `0 <= AvailableCopies <= TotalCopies`.
+  - Delete behavior: **Book → all three: Restrict** (no deleting books with history).
+    **Member → Reservations/Reviews: Cascade** (owned by the member);
+    **Member → Loans: Restrict** (lending record).
+  - `Book.AvailableCopies` is the concurrency token (`IsConcurrencyToken()`): two people
+    reserving the last copy → second `SaveChanges` throws `DbUpdateConcurrencyException`
+    (handled in Step 7). Chosen over a `Version` column so editing a title doesn't conflict.
 - Tables are plural: entities you query directly get a `DbSet` (Books, Authors, Genres);
   join entities use `ToTable(...)` (BookAuthors, BookGenres).
 - `Author.Name` is a single display name and **not** unique (different people can share
@@ -100,3 +115,22 @@ Choices made along the way:
   - A clean build doesn't mean a correct model: always read the generated migration
     (it showed `Role` as INTEGER and a missing configuration).
   - Unapplied migration wrong? Just `migrations remove` and add it again.
+- **Step 5:**
+  - Check constraints: `builder.ToTable(t => t.HasCheckConstraint("CK_...", "sql"))`.
+    The SQL is raw and provider-specific; quote column names.
+  - Filtered unique index = uniqueness only for rows matching a condition
+    (`.HasFilter(...)`). The filter compares stored values, so with enums-as-strings it's
+    `'Active'`, not `0`.
+  - A composite index `(MemberId, BookId)` can't serve `WHERE BookId = ...`, so EF still
+    adds `IX_*_BookId` for the FK.
+  - Concurrency token: EF adds `WHERE AvailableCopies = @original` to the UPDATE; 0 rows
+    affected → exception. No SQL in the migration, only the snapshot changes.
+  - SQLite can't `ALTER TABLE ADD CONSTRAINT`: the C# migration says `AddCheckConstraint`,
+    but the generated SQL **rebuilds the table** (`ef_temp_Books` → copy → drop → rename,
+    with `PRAGMA foreign_keys = 0` so dropping Books doesn't cascade). See it with
+    `dotnet ef migrations script <from> <to>`. Existing rows that break the new rule make
+    the copy fail, so check the data first.
+  - Delete-behavior rule per FK, not per file: think "who owns this row?" for each
+    `HasOne` separately.
+  - Dates are TEXT in SQLite; EF's format (`yyyy-MM-dd HH:mm:ss.FFFFFFF`) sorts as text,
+    so date check constraints compare correctly.
