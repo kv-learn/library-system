@@ -6,16 +6,16 @@ using Microsoft.Data.Sqlite;
 
 namespace LibraryApi.Services;
 
-public class RegistrationService(LibraryDbContext context)
+public class ReservationService(LibraryDbContext context)
 {
     private const int MaxAttempts = 3;
     private static readonly TimeSpan HoldPeriod = TimeSpan.FromDays(3);
 
-    public Task<ReservationDtos?> GetByIdAsync(Guid id, CancellationToken ct)
+    public Task<ReservationDto?> GetByIdAsync(Guid id, CancellationToken ct)
     {
         return context.Reservations
             .Where(r => r.Id == id)
-            .Select(r => new ReservationDtos(
+            .Select(r => new ReservationDto(
                 r.Id,
                 r.BookId,
                 r.Book.Title,
@@ -26,7 +26,7 @@ public class RegistrationService(LibraryDbContext context)
             .FirstOrDefaultAsync(ct);
     }
 
-    public async Task<Result<ReservationDtos>> ReserveAync(Guid bookId, Guid memberId, CancellationToken ct)
+    public async Task<Result<ReservationDto>> ReserveAsync(Guid bookId, Guid memberId, CancellationToken ct)
     {
         try
         {
@@ -34,26 +34,26 @@ public class RegistrationService(LibraryDbContext context)
         }
         catch (DbUpdateException ex) when (ex.InnerException is SqliteException { SqliteExtendedErrorCode: 2067 })
         {
-            return Result<ReservationDtos>.Fail(ErrorType.Conflict, "You already have an active reservation for this book.");
+            return Result<ReservationDto>.Fail(ErrorType.Conflict, "You already have an active reservation for this book.");
         }
     }
 
-    public Task<Result<ReservationDtos>> CancelAsync(Guid reservationId, CancellationToken ct)
+    public Task<Result<ReservationDto>> CancelAsync(Guid reservationId, CancellationToken ct)
         => WithConcurrencyRetryAsync(() => TryCancelAsync(reservationId, ct));
 
 
-    private async Task<Result<ReservationDtos>> TryReserveAsync(Guid bookId, Guid memberId, CancellationToken ct)
+    private async Task<Result<ReservationDto>> TryReserveAsync(Guid bookId, Guid memberId, CancellationToken ct)
     {
         var currentBook = await context.Books.FirstOrDefaultAsync(b => b.Id == bookId, ct);
 
         if (currentBook is null)
         {
-            return Result<ReservationDtos>.Fail(ErrorType.NotFound, "Book not found.");
+            return Result<ReservationDto>.Fail(ErrorType.NotFound, "Book not found.");
         }
 
         if (!await context.Members.AnyAsync(m => m.Id == memberId, ct))
         {
-            return Result<ReservationDtos>.Fail(ErrorType.NotFound, "Member not found.");
+            return Result<ReservationDto>.Fail(ErrorType.NotFound, "Member not found.");
         }
 
         var alreadyReserved = await context.Reservations
@@ -61,12 +61,12 @@ public class RegistrationService(LibraryDbContext context)
 
         if (alreadyReserved)
         {
-            return Result<ReservationDtos>.Fail(ErrorType.Conflict, "You already have an active reservation for this book.");
+            return Result<ReservationDto>.Fail(ErrorType.Conflict, "You already have an active reservation for this book.");
         }
 
         if (currentBook.AvailableCopies <= 0)
         {
-            return Result<ReservationDtos>.Fail(ErrorType.Conflict, "No available copies for this book.");
+            return Result<ReservationDto>.Fail(ErrorType.Conflict, "No available copies for this book.");
         }
 
         var bookReservation = new Reservation
@@ -81,10 +81,10 @@ public class RegistrationService(LibraryDbContext context)
 
         await context.SaveChangesAsync(ct);
 
-        return Result<ReservationDtos>.Ok(ToDto(bookReservation, currentBook.Title));
+        return Result<ReservationDto>.Ok(ToDto(bookReservation, currentBook.Title));
     }
 
-    private async Task<Result<ReservationDtos>> TryCancelAsync(Guid reservationId, CancellationToken ct)
+    private async Task<Result<ReservationDto>> TryCancelAsync(Guid reservationId, CancellationToken ct)
     {
         var reservation = await context.Reservations
             .Include(r => r.Book)
@@ -92,12 +92,12 @@ public class RegistrationService(LibraryDbContext context)
 
         if (reservation is null)
         {
-            return Result<ReservationDtos>.Fail(ErrorType.NotFound, "Reservation not found.");
+            return Result<ReservationDto>.Fail(ErrorType.NotFound, "Reservation not found.");
         }
 
         if (reservation.Status != ReservationStatus.Active)
         {
-            return Result<ReservationDtos>.Fail(ErrorType.Conflict, "Only active reservations can be cancelled.");
+            return Result<ReservationDto>.Fail(ErrorType.Conflict, "Only active reservations can be cancelled.");
         }
 
         reservation.Status = ReservationStatus.Cancelled;
@@ -105,7 +105,7 @@ public class RegistrationService(LibraryDbContext context)
 
         await context.SaveChangesAsync(ct);
 
-        return Result<ReservationDtos>.Ok(ToDto(reservation, reservation.Book.Title));
+        return Result<ReservationDto>.Ok(ToDto(reservation, reservation.Book.Title));
     }
 
     private async Task<Result<T>> WithConcurrencyRetryAsync<T>(Func<Task<Result<T>>> action)
@@ -125,7 +125,7 @@ public class RegistrationService(LibraryDbContext context)
         return Result<T>.Fail(ErrorType.Conflict, "Could not complete the operation due to concurrent updates. Please try again.");
     }
 
-    private ReservationDtos ToDto(Reservation r, string bookTitle) =>
+    private ReservationDto ToDto(Reservation r, string bookTitle) =>
         new(r.Id, r.BookId, bookTitle, r.MemberId, r.Status, r.CreatedAt, r.ExpiresAt);
 
 }

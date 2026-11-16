@@ -4,7 +4,7 @@ namespace LibraryApi.Dtos;
 
 public record CreateReservationRequest(Guid BookId, Guid MemberId);
 
-public record ReservationDtos(
+public record ReservationDto(
     Guid Id,
     Guid BookId,
     string BookTitle,

@@ -10,7 +10,7 @@ public sealed class Result<T>
     public Error? Error { get; }
     public bool IsSuccess => Error is null;
 
-    public Result(T? value, Error? error)
+    private Result(T? value, Error? error)
     {
         Value = value;
         Error = error;

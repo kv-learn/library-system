@@ -36,7 +36,7 @@ namespace LibraryApi
 
             }, ServiceLifetime.Scoped);
             builder.Services.AddScoped<BookService>();
-            builder.Services.AddScoped<RegistrationService>();
+            builder.Services.AddScoped<ReservationService>();
 
 
             var app = builder.Build();

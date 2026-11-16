@@ -99,7 +99,7 @@ public static class DevDataSeeder
     {
         List<Member> members =
         [
-            new() { Id = KarthikId,     Email = "alice@gmail.com",     FullName = "Alice Reader", PasswordHash = "" },
+            new() { Id = KarthikId,     Email = "karthik@gmail.com",     FullName = "Karthik Reader", PasswordHash = "" },
             new() { Id = BobId,       Email = "bob@gmail.com",       FullName = "Bob Reader",   PasswordHash = "" },
             new() { Id = LibrarianId, Email = "librarian@gmail.com", FullName = "Lena Librarian", Role = MemberRole.Librarian, PasswordHash = "" },
         ];

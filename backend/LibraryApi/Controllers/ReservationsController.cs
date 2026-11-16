@@ -6,10 +6,10 @@ namespace LibraryApi.Controllers;
 
 [ApiController]
 [Route("api/reservations")]
-public class ReservationsController(RegistrationService registrationService) : ControllerBase
+public class ReservationsController(ReservationService registrationService) : ControllerBase
 {
     [HttpGet("{id:guid}")]
-    public async Task<ActionResult<ReservationDtos>> GetReservation(Guid id, CancellationToken ct)
+    public async Task<ActionResult<ReservationDto>> GetReservation(Guid id, CancellationToken ct)
     {
         var reservation = await registrationService.GetByIdAsync(id, ct);
 
@@ -22,9 +22,9 @@ public class ReservationsController(RegistrationService registrationService) : C
     }
 
     [HttpPost]
-    public async Task<ActionResult<ReservationDtos>> CreateReservation(CreateReservationRequest request, CancellationToken ct)
+    public async Task<ActionResult<ReservationDto>> CreateReservation(CreateReservationRequest request, CancellationToken ct)
     {
-        var result = await registrationService.ReserveAync(request.BookId, request.MemberId, ct);
+        var result = await registrationService.ReserveAsync(request.BookId, request.MemberId, ct);
 
         if (result.IsSuccess)
         {
@@ -35,7 +35,7 @@ public class ReservationsController(RegistrationService registrationService) : C
     }
 
     [HttpPost("{id:guid}/cancel")]
-    public async Task<ActionResult<ReservationDtos>> CancelReservation(Guid id, CancellationToken ct)
+    public async Task<ActionResult<ReservationDto>> CancelReservation(Guid id, CancellationToken ct)
     {
         var result = await registrationService.CancelAsync(id, ct);
 
