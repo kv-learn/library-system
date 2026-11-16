@@ -8,5 +8,10 @@ public class Member : IHasCreatedAt
     public required string PasswordHash { get; set; }
     public MemberRole Role { get; set; } = MemberRole.Member;
     public DateTime CreatedAt { get; set; }
+    
     public  ICollection<RefreshToken> RefreshTokens { get; set; } = [];
+    public ICollection<Reservation> Reservations { get; set; } = [];
+    public ICollection<Loan> Loans { get; set; } = [];
+    public ICollection<Review> Reviews { get; set; } = [];
+
 }

@@ -44,6 +44,7 @@ namespace LibraryApi.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<int>("AvailableCopies")
+                        .IsConcurrencyToken()
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("Description")
@@ -71,7 +72,12 @@ namespace LibraryApi.Migrations
                     b.HasIndex("Isbn")
                         .IsUnique();
 
-                    b.ToTable("Books");
+                    b.ToTable("Books", t =>
+                        {
+                            t.HasCheckConstraint("CK_Books_AvailableCopies", "\"AvailableCopies\" >= 0 AND \"AvailableCopies\" <= \"TotalCopies\"");
+
+                            t.HasCheckConstraint("CK_Books_TotalCopies", "\"TotalCopies\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("LibraryApi.Entities.BookAuthor", b =>
@@ -124,6 +130,43 @@ namespace LibraryApi.Migrations
                         .IsUnique();
 
                     b.ToTable("Genres");
+                });
+
+            modelBuilder.Entity("LibraryApi.Entities.Loan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("BookId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("DueAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("MemberId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ReturnedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookId");
+
+                    b.HasIndex("MemberId", "BookId")
+                        .IsUnique()
+                        .HasFilter("\"ReturnedAt\" IS NULL");
+
+                    b.ToTable("Loans", t =>
+                        {
+                            t.HasCheckConstraint("CK_Loans_DueAfterBorrowed", "\"DueAt\" > \"CreatedAt\"");
+
+                            t.HasCheckConstraint("CK_Loans_ReturnedAfterBorrowed", "\"ReturnedAt\" IS NULL OR \"ReturnedAt\" >= \"CreatedAt\"");
+                        });
                 });
 
             modelBuilder.Entity("LibraryApi.Entities.Member", b =>
@@ -196,6 +239,75 @@ namespace LibraryApi.Migrations
                     b.ToTable("RefreshTokens");
                 });
 
+            modelBuilder.Entity("LibraryApi.Entities.Reservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("BookId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("MemberId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookId");
+
+                    b.HasIndex("MemberId", "BookId")
+                        .IsUnique()
+                        .HasFilter("\"Status\" = 'Active'");
+
+                    b.ToTable("Reservations");
+                });
+
+            modelBuilder.Entity("LibraryApi.Entities.Review", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("BookId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("MemberId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Rating")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookId");
+
+                    b.HasIndex("MemberId", "BookId")
+                        .IsUnique();
+
+                    b.ToTable("Reviews", t =>
+                        {
+                            t.HasCheckConstraint("CK_Reviews_Rating", "\"Rating\" BETWEEN 1 AND 5");
+                        });
+                });
+
             modelBuilder.Entity("LibraryApi.Entities.BookAuthor", b =>
                 {
                     b.HasOne("LibraryApi.Entities.Author", "Author")
@@ -234,6 +346,25 @@ namespace LibraryApi.Migrations
                     b.Navigation("Genre");
                 });
 
+            modelBuilder.Entity("LibraryApi.Entities.Loan", b =>
+                {
+                    b.HasOne("LibraryApi.Entities.Book", "Book")
+                        .WithMany("Loans")
+                        .HasForeignKey("BookId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("LibraryApi.Entities.Member", "Member")
+                        .WithMany("Loans")
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Book");
+
+                    b.Navigation("Member");
+                });
+
             modelBuilder.Entity("LibraryApi.Entities.RefreshToken", b =>
                 {
                     b.HasOne("LibraryApi.Entities.Member", "Member")
@@ -241,6 +372,44 @@ namespace LibraryApi.Migrations
                         .HasForeignKey("MemberId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Member");
+                });
+
+            modelBuilder.Entity("LibraryApi.Entities.Reservation", b =>
+                {
+                    b.HasOne("LibraryApi.Entities.Book", "Book")
+                        .WithMany("Reservations")
+                        .HasForeignKey("BookId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("LibraryApi.Entities.Member", "Member")
+                        .WithMany("Reservations")
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Book");
+
+                    b.Navigation("Member");
+                });
+
+            modelBuilder.Entity("LibraryApi.Entities.Review", b =>
+                {
+                    b.HasOne("LibraryApi.Entities.Book", "Book")
+                        .WithMany("Reviews")
+                        .HasForeignKey("BookId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("LibraryApi.Entities.Member", "Member")
+                        .WithMany("Reviews")
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Book");
 
                     b.Navigation("Member");
                 });
@@ -255,6 +424,12 @@ namespace LibraryApi.Migrations
                     b.Navigation("BookAuthors");
 
                     b.Navigation("BookGenres");
+
+                    b.Navigation("Loans");
+
+                    b.Navigation("Reservations");
+
+                    b.Navigation("Reviews");
                 });
 
             modelBuilder.Entity("LibraryApi.Entities.Genre", b =>
@@ -264,7 +439,13 @@ namespace LibraryApi.Migrations
 
             modelBuilder.Entity("LibraryApi.Entities.Member", b =>
                 {
+                    b.Navigation("Loans");
+
                     b.Navigation("RefreshTokens");
+
+                    b.Navigation("Reservations");
+
+                    b.Navigation("Reviews");
                 });
 #pragma warning restore 612, 618
         }

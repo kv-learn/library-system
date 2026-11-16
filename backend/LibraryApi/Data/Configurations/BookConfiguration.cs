@@ -22,5 +22,17 @@ public class BookConfiguration : IEntityTypeConfiguration<Book>
 
         builder.Property(b => b.Description)
             .HasMaxLength(2000);
+
+        builder.ToTable(t =>
+        {
+            t.HasCheckConstraint("CK_Books_TotalCopies", "\"TotalCopies\" >= 0");
+            t.HasCheckConstraint("CK_Books_AvailableCopies",
+            "\"AvailableCopies\" >= 0 AND \"AvailableCopies\" <= \"TotalCopies\"");
+         });
+
+        // Two concurrent reservations of the last copy: the second save fails instead of overbooking
+        builder.Property(b => b.AvailableCopies)
+               .IsConcurrencyToken();
     }
+
 }
