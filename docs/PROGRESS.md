@@ -8,7 +8,7 @@
       first migration, inspect the .db file.
 - [x] **3. Authors + Genres**: many-to-many join tables, second migration,
       read the generated migration.
-- [ ] **4. Members + RefreshTokens**: unique NOCASE email, cascade delete.
+- [x] **4. Members + RefreshTokens**: unique NOCASE email, cascade delete.
 - [ ] **5. Reservations, Loans, Reviews**: check constraints, filtered unique
       index, concurrency token.
 - [ ] **6. Seeding**: HasData vs UseSeeding/UseAsyncSeeding.
@@ -18,7 +18,7 @@
 - [ ] **9. Vue frontend** (VS Code).
 
 ## Current status
-Steps 1-3 done. Next: Step 4 (Members + RefreshTokens).
+Steps 1-4 done. Next: Step 5 (Reservations, Loans, Reviews).
 
 Choices made along the way:
 - Primary keys are `Guid` (stored as TEXT in SQLite). Use the same key type for every table.
@@ -32,6 +32,20 @@ Choices made along the way:
   PKs `(BookId, XId)`, not skip navigations. `BookAuthor.SortOrder` gives the author order.
 - Delete behavior: **cascade from the owner** (Book → its link rows), **restrict from
   shared reference data** (Author/Genre → link rows).
+- All EF entities live in `Entities/` (incl. `Member`, `RefreshToken`). `Authentication/`
+  is reserved for auth code in Step 8 (token service, JWT options, password hashing).
+- `Member.Email` uses `COLLATE NOCASE` on the column (the unique index inherits it).
+- `Member.Role` is an enum stored as a string (`HasConversion<string>()`). The
+  lowest-privilege value (`Member`) comes first, so `default(MemberRole)` is safe.
+- Timestamps are UTC `DateTime` (not `DateTimeOffset`: EF's SQLite provider can't
+  compare/order it in SQL).
+- `CreatedAt` is set automatically: entities implement `IHasCreatedAt`, and
+  `LibraryDbContext` overrides `SaveChanges(bool)` / `SaveChangesAsync(bool, ct)` to stamp
+  `Added` entries with `DateTime.UtcNow`. `ExpiresAt` is business logic (set by the token
+  service).
+- Refresh tokens store only a SHA-256 hash (`TokenHash`, unique), never the raw token.
+  `IsRevoked` is computed from `RevokedAt` (one source of truth, no column).
+  Member → RefreshTokens is cascade delete.
 - Tables are plural: entities you query directly get a `DbSet` (Books, Authors, Genres);
   join entities use `ToTable(...)` (BookAuthors, BookGenres).
 - `Author.Name` is a single display name and **not** unique (different people can share
@@ -72,3 +86,17 @@ Choices made along the way:
   - Avoid SQL keywords as column names (`Order` → `SortOrder`).
   - Tools: SQLite Viewer / SQLite extensions in VS Code; `.editorconfig` +
     `dotnet format` keep formatting the same across editors.
+- **Step 4:**
+  - Collation belongs on the column (`UseCollation("NOCASE")`): the unique index and
+    every `WHERE Email = ...` then ignore case, so no `ToLower()` needed in queries.
+  - SQLite `NOCASE` only folds ASCII letters (`É` ≠ `é`). Fine for emails; still trim input.
+  - Store enums as strings: readable rows, and reordering the enum can't change data.
+  - Hash refresh tokens like passwords: a leaked DB then can't be used to log in.
+  - Don't store a fact twice (`IsRevoked` + `RevokedAt` can disagree); compute one from
+    the other. EF doesn't map get-only properties.
+  - When overriding, call the **same** overload on `base`: `base.SaveChanges()` from inside
+    `SaveChanges(bool)` calls back into the override → infinite recursion → crash.
+  - `.IsRequired()` on a non-nullable value type (`DateTime`, enum) does nothing.
+  - A clean build doesn't mean a correct model: always read the generated migration
+    (it showed `Role` as INTEGER and a missing configuration).
+  - Unapplied migration wrong? Just `migrations remove` and add it again.
