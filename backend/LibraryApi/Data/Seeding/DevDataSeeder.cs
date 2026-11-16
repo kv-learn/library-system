@@ -1,25 +1,46 @@
 using LibraryApi.Entities;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace LibraryApi.Data.Seeding;
 
 public static class DevDataSeeder
 {
+    // Fixed IDs so Postman requests can use them
+    public static readonly Guid KarthikId     = new("5432605b-f6ef-4967-b069-28f5254c8a44");
+    public static readonly Guid BobId       = new("854428e3-735e-414b-b7a0-9afa85776a15");
+    public static readonly Guid LibrarianId = new("2cddddaa-8bb2-41c6-a838-44ee0fad29cc");
+    private const string DevPassword = "Pass123";   // dev only
+
     // Used by `dotnet ef database update` and Migrate()
     public static void Seed(LibraryDbContext context)
     {
-        if (context.Books.Any()) return;   // runs on every update: only seed an empty DB
+        if (!context.Books.Any())
+        {
+             context.Books.AddRange(BuildBooks());
+        }
 
-        context.Books.AddRange(BuildBooks());
+        if (!context.Members.Any())
+        {
+             context.Members.AddRange(BuildMembers());
+        }
+
         context.SaveChanges();
     }
 
      // Used by MigrateAsync() / EnsureCreatedAsync()
     public static async Task SeedAsync(LibraryDbContext context, CancellationToken ct)
     {
-        if (await context.Books.AnyAsync(ct)) return;
+        if (!await context.Books.AnyAsync(ct))
+        {
+            context.Books.AddRange(BuildBooks());
+        }
 
-        context.Books.AddRange(BuildBooks());
+        if (!await context.Members.AnyAsync(ct))
+        {
+            context.Members.AddRange(BuildMembers());
+        }
+        
         await context.SaveChangesAsync(ct);
     }
 
@@ -73,4 +94,23 @@ public static class DevDataSeeder
             },
         ];
     }
+
+    private static List<Member> BuildMembers()
+    {
+        List<Member> members =
+        [
+            new() { Id = KarthikId,     Email = "alice@gmail.com",     FullName = "Alice Reader", PasswordHash = "" },
+            new() { Id = BobId,       Email = "bob@gmail.com",       FullName = "Bob Reader",   PasswordHash = "" },
+            new() { Id = LibrarianId, Email = "librarian@gmail.com", FullName = "Lena Librarian", Role = MemberRole.Librarian, PasswordHash = "" },
+        ];
+
+        var hasher = new PasswordHasher<Member>();
+        foreach (var m in members)
+        {
+            m.PasswordHash = hasher.HashPassword(m, DevPassword);
+        }
+
+        return members;
+    }
+
 }

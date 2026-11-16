@@ -2,6 +2,7 @@ using LibraryApi.Services;
 using LibraryApi.Data;
 using LibraryApi.Data.Seeding;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json.Serialization;
 
 namespace LibraryApi
 {
@@ -12,24 +13,30 @@ namespace LibraryApi
             var builder = WebApplication.CreateBuilder(args);
 
             // Add services to the container.
-            builder.Services.AddControllers();
+            builder.Services.AddControllers()
+                .AddJsonOptions(options =>
+                {
+                    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+                });
+
             builder.Services.AddOpenApi();
             builder.Services.AddDbContext<LibraryDbContext>(options =>
             {
                 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
                 options.UseSqlite(connectionString);
 
-            // Sample data for local development only
-             if (builder.Environment.IsDevelopment())
-             {
-                  options.UseSeeding((context, _) =>
-                        DevDataSeeder.Seed((LibraryDbContext)context));
-                  options.UseAsyncSeeding((context, _, ct) =>
-                        DevDataSeeder.SeedAsync((LibraryDbContext)context, ct));
-            }
+                // Sample data for local development only
+                if (builder.Environment.IsDevelopment())
+                {
+                    options.UseSeeding((context, _) =>
+                          DevDataSeeder.Seed((LibraryDbContext)context));
+                    options.UseAsyncSeeding((context, _, ct) =>
+                          DevDataSeeder.SeedAsync((LibraryDbContext)context, ct));
+                }
 
             }, ServiceLifetime.Scoped);
             builder.Services.AddScoped<BookService>();
+            builder.Services.AddScoped<RegistrationService>();
 
 
             var app = builder.Build();
