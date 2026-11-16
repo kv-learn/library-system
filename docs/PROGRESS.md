@@ -12,13 +12,13 @@
 - [x] **5. Reservations, Loans, Reviews**: check constraints, filtered unique
       index, concurrency token.
 - [x] **6. Seeding**: HasData vs UseSeeding/UseAsyncSeeding.
-- [ ] **7. Services + controllers**: BooksController, ReservationsController,
+- [x] **7. Services + controllers**: BooksController, ReservationsController,
       reserve flow with concurrency handling.
 - [ ] **8. JWT auth**: login, refresh, roles.
 - [ ] **9. Vue frontend** (VS Code).
 
 ## Current status
-Steps 1-6 done. Next: Step 7 (Services + controllers).
+Steps 1-7 done. Next: Step 8 (JWT auth).
 
 Choices made along the way:
 - Primary keys are `Guid` (stored as TEXT in SQLite). Use the same key type for every table.
@@ -66,10 +66,29 @@ Choices made along the way:
     `GenreSeed` so the dev seeder can link books to them.
   - **Authors + Books (+ link rows) → `UseSeeding`/`UseAsyncSeeding`**, Development only,
     via `DevDataSeeder` (skips if any book exists). Both methods share `BuildBooks()`.
-  - Members are seeded in Step 8 (needs password hashing).
+  - Dev members (Karthik, Bob = Member; Lena = Librarian) seeded in Step 7 with fixed IDs
+    and `PasswordHasher<Member>` (password `Pass123`, dev only).
   - Seeding runs on `dotnet ef database update` (sync `UseSeeding`); `dotnet run` doesn't
     seed because nothing calls `Migrate()` at startup.
   - "Sherlock Holmes" has 1 copy on purpose, to test concurrency in Step 7.
+- API layer (Step 7):
+  - Layers: `Controllers/` (HTTP only) → `Services/` (EF + rules) → DbContext. No
+    interfaces until a second implementation or a mock is needed. Services are Scoped.
+  - Never return entities: DTOs are positional records in `Dtos/`, filled with `Select`
+    projection (no `Include`, no tracking, only needed columns, one query).
+  - Lists are paged: `PagedResult<T>`, `page >= 1`, `pageSize` 1-100, stable order
+    (`OrderBy(Title).ThenBy(Id)`). Search uses `EF.Functions.Like` (query key `search`).
+  - Services return `Result<T>` (`Ok` / `Fail(ErrorType, message)`, private ctor) for
+    expected outcomes; controllers map `NotFound` → 404, `Conflict` → 409 as ProblemDetails.
+  - Reserve: check book/member/existing Active/copies → `AvailableCopies--` + insert in one
+    `SaveChanges`. `DbUpdateConcurrencyException` → `ChangeTracker.Clear()` and retry
+    (max 3). Unique-index violation (SQLite 2067) → 409 as a safety net. Hold = 3 days.
+  - Cancel is `POST /api/reservations/{id}/cancel` (status change, row kept), Active only.
+  - **TEMP:** `memberId` comes from the request body until Step 8 (then from the JWT).
+  - Enums are serialized as strings (`JsonStringEnumConverter`).
+  - All `DateTime`s are UTC: `UtcDateTimeConverter` applied by convention in
+    `ConfigureConventions`.
+  - Manual testing: Postman collection (kept outside the repo) and curl.
 - Tables are plural: entities you query directly get a `DbSet` (Books, Authors, Genres);
   join entities use `ToTable(...)` (BookAuthors, BookGenres).
 - `Author.Name` is a single display name and **not** unique (different people can share
@@ -157,3 +176,30 @@ Choices made along the way:
     found; in .NET 10 the compiler picks `System.Linq.AsyncEnumerable.AnyAsync` instead and
     gives a confusing "type arguments cannot be inferred" error.
   - Check the counts after seeding, e.g. `sqlite3 library.db "select count(*) from Books"`.
+- **Step 7:**
+  - Register every service (`AddScoped<T>()`): a missing registration builds fine and fails
+    at the first request ("Unable to resolve service").
+  - Route templates: `[...]` are tokens (`[controller]`), so `[Route("[api/books]")]` breaks.
+  - Model binding matches query keys to parameter names and silently ignores unknown keys
+    (`?search=` vs `searchTerm` → filter never applied). Check the SQL log for the `WHERE`.
+  - `string.Contains` → `instr()` (case-sensitive) in SQLite; `EF.Functions.Like` isn't.
+  - `Average` over no rows is SQL `NULL`: project as `(double?)` or materialization throws.
+  - ASP.NET strips the `Async` suffix from action names → `CreatedAtAction(nameof(XAsync))`
+    finds no route. Don't use `Async` on action names.
+  - Concurrency token in practice: EF adds `WHERE AvailableCopies = @original`; 0 rows →
+    whole `SaveChanges` transaction rolls back (no orphan reservation). Without the token
+    two requests both write `1 - 1 = 0`: no error, no check-constraint violation, one copy
+    given to two people.
+  - Before retrying, `ChangeTracker.Clear()`, or the retry reuses the stale tracked entity.
+  - `DbUpdateConcurrencyException` derives from `DbUpdateException`: catch the specific one
+    first.
+  - SQLite returns `DateTime` as `Kind = Unspecified` → JSON without `Z` → browsers treat it
+    as local time. Fixed with a value converter (no migration;
+    `dotnet ef migrations has-pending-model-changes` confirms).
+  - Seed code only runs against an empty table: changing `BuildMembers()` doesn't update
+    existing rows; update them directly or recreate the DB.
+  - Debugging: F5 (C# Dev Kit) + breakpoints, Variables panel, Debug Console; or attach to a
+    running `dotnet run` process. SQL logging via
+    `Microsoft.EntityFrameworkCore.Database.Command: Information`.
+  - OpenAPI from .NET 10 is 3.1; Postman's link import can't reach localhost → import a file
+    or a Postman collection.
