@@ -11,14 +11,14 @@
 - [x] **4. Members + RefreshTokens**: unique NOCASE email, cascade delete.
 - [x] **5. Reservations, Loans, Reviews**: check constraints, filtered unique
       index, concurrency token.
-- [ ] **6. Seeding**: HasData vs UseSeeding/UseAsyncSeeding.
+- [x] **6. Seeding**: HasData vs UseSeeding/UseAsyncSeeding.
 - [ ] **7. Services + controllers**: BooksController, ReservationsController,
       reserve flow with concurrency handling.
 - [ ] **8. JWT auth**: login, refresh, roles.
 - [ ] **9. Vue frontend** (VS Code).
 
 ## Current status
-Steps 1-5 done. Next: Step 6 (Seeding).
+Steps 1-6 done. Next: Step 7 (Services + controllers).
 
 Choices made along the way:
 - Primary keys are `Guid` (stored as TEXT in SQLite). Use the same key type for every table.
@@ -61,6 +61,15 @@ Choices made along the way:
   - `Book.AvailableCopies` is the concurrency token (`IsConcurrencyToken()`): two people
     reserving the last copy → second `SaveChanges` throws `DbUpdateConcurrencyException`
     (handled in Step 7). Chosen over a `Version` column so editing a title doesn't conflict.
+- Seeding (code in `Data/Seeding/`):
+  - **Genres → `HasData`** (reference data, part of migrations). Fixed GUIDs live in
+    `GenreSeed` so the dev seeder can link books to them.
+  - **Authors + Books (+ link rows) → `UseSeeding`/`UseAsyncSeeding`**, Development only,
+    via `DevDataSeeder` (skips if any book exists). Both methods share `BuildBooks()`.
+  - Members are seeded in Step 8 (needs password hashing).
+  - Seeding runs on `dotnet ef database update` (sync `UseSeeding`); `dotnet run` doesn't
+    seed because nothing calls `Migrate()` at startup.
+  - "Sherlock Holmes" has 1 copy on purpose, to test concurrency in Step 7.
 - Tables are plural: entities you query directly get a `DbSet` (Books, Authors, Genres);
   join entities use `ToTable(...)` (BookAuthors, BookGenres).
 - `Author.Name` is a single display name and **not** unique (different people can share
@@ -134,3 +143,17 @@ Choices made along the way:
     `HasOne` separately.
   - Dates are TEXT in SQLite; EF's format (`yyyy-MM-dd HH:mm:ss.FFFFFFF`) sorts as text,
     so date check constraints compare correctly.
+- **Step 6:**
+  - `HasData` = seed data in the model → `InsertData`/`UpdateData`/`DeleteData` in
+    migrations. Needs fixed keys and values that never change between builds (no
+    `Guid.NewGuid()`/`DateTime.UtcNow`, or every `migrations add` sees a change). Only FKs,
+    no navigations. Skips `SaveChanges`, so no automatic `CreatedAt`.
+  - `UseSeeding` / `UseAsyncSeeding` (EF 9+) = normal C# after migrate/`EnsureCreated`.
+    Full object graphs, generated keys. Runs **every** time, so it must check first
+    (idempotent). Provide both: the tools call the sync one, `MigrateAsync` the async one.
+  - Add only the root (`Books.AddRange`): EF follows navigations and inserts authors and
+    link rows in FK order.
+  - Missing `using Microsoft.EntityFrameworkCore;` → EF's `AnyAsync`/`ToListAsync` aren't
+    found; in .NET 10 the compiler picks `System.Linq.AsyncEnumerable.AnyAsync` instead and
+    gives a confusing "type arguments cannot be inferred" error.
+  - Check the counts after seeding, e.g. `sqlite3 library.db "select count(*) from Books"`.
