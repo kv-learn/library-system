@@ -1,5 +1,6 @@
 
 using LibraryApi.Data;
+using LibraryApi.Data.Seeding;
 using Microsoft.EntityFrameworkCore;
 
 namespace LibraryApi
@@ -17,6 +18,16 @@ namespace LibraryApi
             {
                 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
                 options.UseSqlite(connectionString);
+
+            // Sample data for local development only
+             if (builder.Environment.IsDevelopment())
+             {
+                  options.UseSeeding((context, _) =>
+                        DevDataSeeder.Seed((LibraryDbContext)context));
+                  options.UseAsyncSeeding((context, _, ct) =>
+                        DevDataSeeder.SeedAsync((LibraryDbContext)context, ct));
+            }
+
             }, ServiceLifetime.Scoped);
 
 

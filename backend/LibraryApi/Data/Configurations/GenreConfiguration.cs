@@ -1,3 +1,4 @@
+using LibraryApi.Data.Seeding;
 using LibraryApi.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -14,6 +15,8 @@ public class GenreConfiguration: IEntityTypeConfiguration<Genre>
         builder.Property(b => b.Name)
             .IsRequired()
             .HasMaxLength(50);
+            
+        builder.HasData(GenreSeed.All);
     }
 }
 
