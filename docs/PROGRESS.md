@@ -15,10 +15,13 @@
 - [x] **7. Services + controllers**: BooksController, ReservationsController,
       reserve flow with concurrency handling.
 - [ ] **8. JWT auth**: login, refresh, roles.
+  - [x] 8A: JWT setup, register, login, `GET /api/auth/me`.
+  - [ ] 8B: protect Reservations (member id from the token, ownership, Librarian role).
+  - [ ] 8C: refresh tokens (rotation, reuse detection), logout.
 - [ ] **9. Vue frontend** (VS Code).
 
 ## Current status
-Steps 1-7 done. Next: Step 8 (JWT auth).
+Steps 1-7 and 8A done. Next: 8B (protect Reservations).
 
 Choices made along the way:
 - Primary keys are `Guid` (stored as TEXT in SQLite). Use the same key type for every table.
@@ -33,7 +36,7 @@ Choices made along the way:
 - Delete behavior: **cascade from the owner** (Book → its link rows), **restrict from
   shared reference data** (Author/Genre → link rows).
 - All EF entities live in `Entities/` (incl. `Member`, `RefreshToken`). `Authentication/`
-  is reserved for auth code in Step 8 (token service, JWT options, password hashing).
+  holds auth code (`JwtOptions`, `AuthClaims`, `TokenService`).
 - `Member.Email` uses `COLLATE NOCASE` on the column (the unique index inherits it).
 - `Member.Role` is an enum stored as a string (`HasConversion<string>()`). The
   lowest-privilege value (`Member`) comes first, so `default(MemberRole)` is safe.
@@ -89,6 +92,24 @@ Choices made along the way:
   - All `DateTime`s are UTC: `UtcDateTimeConverter` applied by convention in
     `ConfigureConventions`.
   - Manual testing: Postman collection (kept outside the repo) and curl.
+- Auth (Step 8A):
+  - JWT bearer, HS256, access token 15 min. Settings in the `Jwt` section of
+    `appsettings.json`; the signing key (`Jwt:SigningKey`, 64 random bytes) is in
+    **user secrets** in dev (`Jwt__SigningKey` env var in production), never in git.
+  - `JwtOptions` is validated at startup (`ValidateDataAnnotations().ValidateOnStart()`).
+  - Claims: `sub` (member id), `email`, `name`, `role`, `jti`. `MapInboundClaims = false`
+    keeps those short names; `NameClaimType`/`RoleClaimType` point at them so
+    `[Authorize(Roles = ...)]` works. `ClockSkew` 30 s (default is 5 min).
+  - `TokenService` is a singleton (config only); `AuthService` is scoped (DbContext).
+    `IPasswordHasher<Member>` = `PasswordHasher<Member>` (PBKDF2), singleton.
+  - Endpoints: `POST /api/auth/register`, `POST /api/auth/login` (both return
+    `AuthResponse`), `[Authorize] GET /api/auth/me`.
+  - Emails are trimmed + lower-cased before lookup/insert. Register never takes `Role`
+    from the request (always `Member`); password 8-128 chars (seeded `Pass123` still logs in).
+  - Login failure gives the same 401 "Invalid email or password." for unknown email and
+    wrong password. `SuccessRehashNeeded` → hash upgraded on login.
+  - `ErrorType.Unauthorized` → 401. `BaseApiController` (`[ApiController]` + `ToProblem`)
+    is the base for all controllers.
 - Tables are plural: entities you query directly get a `DbSet` (Books, Authors, Genres);
   join entities use `ToTable(...)` (BookAuthors, BookGenres).
 - `Author.Name` is a single display name and **not** unique (different people can share
@@ -203,3 +224,19 @@ Choices made along the way:
     `Microsoft.EntityFrameworkCore.Database.Command: Information`.
   - OpenAPI from .NET 10 is 3.1; Postman's link import can't reach localhost → import a file
     or a Postman collection.
+- **Step 8A:**
+  - A JWT is signed, not encrypted: anyone can base64-decode the payload. Never put secrets
+    in it. The signature only proves who issued it and that it wasn't changed.
+  - `UseAuthentication()` (who are you?) must come before `UseAuthorization()` (are you
+    allowed?).
+  - The options binder matches property names to config keys: a typo (`SigninKey`) binds
+    nothing, and `ValidateOnStart` catches it at startup instead of at the first login.
+    `MinLength` vs `MaxLength` matters for a key.
+  - `openssl rand -base64 64` wraps lines; pipe through `tr -d '\n'` before storing.
+  - `[ApiController]` gives JSON body binding and automatic 400s. Put it on the base
+    controller so every controller gets it.
+  - An action without `[HttpGet("me")]` maps to the controller route for every verb;
+    without `[Authorize]` it isn't protected (the middleware must reject it with 401 and
+    `WWW-Authenticate`, not the action code).
+  - Don't accept `Role` in register (mass assignment).
+  - Decode a token: `echo $TOKEN | cut -d. -f2` then base64url-decode (add `=` padding).
