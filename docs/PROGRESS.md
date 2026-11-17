@@ -16,12 +16,12 @@
       reserve flow with concurrency handling.
 - [ ] **8. JWT auth**: login, refresh, roles.
   - [x] 8A: JWT setup, register, login, `GET /api/auth/me`.
-  - [ ] 8B: protect Reservations (member id from the token, ownership, Librarian role).
+  - [x] 8B: protect Reservations (member id from the token, ownership, Librarian role).
   - [ ] 8C: refresh tokens (rotation, reuse detection), logout.
 - [ ] **9. Vue frontend** (VS Code).
 
 ## Current status
-Steps 1-7 and 8A done. Next: 8B (protect Reservations).
+Steps 1-7, 8A and 8B done. Next: 8C (refresh tokens, logout).
 
 Choices made along the way:
 - Primary keys are `Guid` (stored as TEXT in SQLite). Use the same key type for every table.
@@ -87,7 +87,7 @@ Choices made along the way:
     `SaveChanges`. `DbUpdateConcurrencyException` → `ChangeTracker.Clear()` and retry
     (max 3). Unique-index violation (SQLite 2067) → 409 as a safety net. Hold = 3 days.
   - Cancel is `POST /api/reservations/{id}/cancel` (status change, row kept), Active only.
-  - **TEMP:** `memberId` comes from the request body until Step 8 (then from the JWT).
+  - The member id comes from the JWT (`sub`) since Step 8B, never from the request body.
   - Enums are serialized as strings (`JsonStringEnumConverter`).
   - All `DateTime`s are UTC: `UtcDateTimeConverter` applied by convention in
     `ConfigureConventions`.
@@ -110,6 +110,22 @@ Choices made along the way:
     wrong password. `SuccessRehashNeeded` → hash upgraded on login.
   - `ErrorType.Unauthorized` → 401. `BaseApiController` (`[ApiController]` + `ToProblem`)
     is the base for all controllers.
+- Authorization (Step 8B):
+  - **Secure by default:** fallback policy `RequireAuthenticatedUser()`; public endpoints
+    opt out with `[AllowAnonymous]` (BookController, register, login, `MapOpenApi()`).
+  - `ClaimsPrincipalExtensions`: `User.GetMemberId()` (reads `sub`, throws if missing,
+    only used on `[Authorize]` endpoints) and `User.IsLibrarian()`.
+  - Reservations: `[Authorize]` on the controller. `CreateReservationRequest` has only
+    `BookId`; the member comes from the token.
+  - Ownership: get/cancel filter `r.Id == id && (isLibrarian || r.MemberId == requesterId)`
+    in the query. Not yours → **404** (don't reveal it exists), wrong role → **403**,
+    no/invalid token → **401**.
+  - `GET /api/reservations/mine` (own list, newest first) and
+    `[Authorize(Roles = nameof(MemberRole.Librarian))] GET /api/reservations`
+    (paged, optional `status` filter). Librarians can view/cancel any reservation.
+  - One `Expression<Func<Reservation, ReservationDto>>` projection shared by the queries.
+  - `GET /api/auth/me`: `AuthService.GetMemberAsync` returns `Result<MemberDto>`
+    (member deleted → 401 ProblemDetails).
 - Tables are plural: entities you query directly get a `DbSet` (Books, Authors, Genres);
   join entities use `ToTable(...)` (BookAuthors, BookGenres).
 - `Author.Name` is a single display name and **not** unique (different people can share
@@ -240,3 +256,16 @@ Choices made along the way:
     `WWW-Authenticate`, not the action code).
   - Don't accept `Role` in register (mass assignment).
   - Decode a token: `echo $TOKEN | cut -d. -f2` then base64url-decode (add `=` padding).
+- **Step 8B:**
+  - Never let the body say *who* is acting: take the user id from the token. Extra JSON
+    fields (`memberId`) are silently ignored once the DTO doesn't have them.
+  - Fallback policy = forgetting `[AllowAnonymous]` gives a visible 401; forgetting
+    `[Authorize]` without it would leak data. `MapOpenApi()` needs `.AllowAnonymous()` too.
+  - 401 = who are you? 403 = I know you, not allowed. For other people's data return 404.
+  - Put the ownership rule in the query `Where` (one query, can't forget a check later).
+  - An `Expression<Func<...>>` (not `Func`) keeps a shared projection translatable to SQL.
+  - `Result<T>` is created in services and turned into HTTP only by `ToProblem`; a
+    controller can't return a `Result` as an `ActionResult`.
+  - Stateless JWT: a deleted member's token stays valid until it expires; only endpoints
+    that look the member up notice. Keep access tokens short.
+  - `[Authorize(Roles = ...)]` needs a const: `nameof(MemberRole.Librarian)` works.
