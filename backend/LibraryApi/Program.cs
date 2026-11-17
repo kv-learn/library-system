@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Identity;
 using LibraryApi.Entities;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.AspNetCore.Authorization;
 
 namespace LibraryApi
 {
@@ -82,18 +83,23 @@ namespace LibraryApi
                 }
             );
 
+            // Every endpoint requires a logged-in user unless it says [AllowAnonymous]
+            builder.Services.AddAuthorizationBuilder()
+                            .SetFallbackPolicy(new AuthorizationPolicyBuilder()
+                            .RequireAuthenticatedUser()
+                            .Build());
+
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
             {
-                app.MapOpenApi();
+                app.MapOpenApi().AllowAnonymous();
             }
 
             app.UseHttpsRedirection();
             app.UseAuthentication();
             app.UseAuthorization();
-
 
             app.MapControllers();
 

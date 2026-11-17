@@ -1,10 +1,12 @@
 using LibraryApi.Dtos;
 using LibraryApi.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LibraryApi.Controllers;
 
 [ApiController]
+[AllowAnonymous]
 [Route("api/books")]
 public class BookController(BookService bookService): ControllerBase
 {

@@ -9,6 +9,7 @@ namespace LibraryApi.Controllers;
 [Route("api/auth")]
 public class AuthController(AuthService auth) : BaseApiController
 {
+    [AllowAnonymous]
     [HttpPost("register")]
     public async Task<ActionResult<AuthResponse>> Register(RegisterRequest request, CancellationToken ct)
     {
@@ -16,6 +17,7 @@ public class AuthController(AuthService auth) : BaseApiController
         return result.IsSuccess ? Ok(result.Value) : ToProblem(result.Error!);
     }
 
+    [AllowAnonymous]
     [HttpPost("login")]
     public async Task<ActionResult<AuthResponse>> Login(LoginRequest request, CancellationToken ct)
     {
@@ -27,15 +29,8 @@ public class AuthController(AuthService auth) : BaseApiController
     [HttpGet("me")]
     public async Task<ActionResult<MemberDto>> Me(CancellationToken ct)
     {
-        // The middleware already validated the token; "sub" is the member id we put in it
-        if (!Guid.TryParse(User.FindFirst(AuthClaims.Sub)?.Value, out var memberId))
-        {
-            return Unauthorized();
-        }
-
-        var me = await auth.GetMemberAsync(memberId, ct);
-
-        return me is null ? Unauthorized() : Ok(me);
+        var result = await auth.GetMemberAsync(User.GetMemberId(), ct);
+        return result.IsSuccess ? Ok(result.Value) : ToProblem(result.Error!);
     }
 }
 

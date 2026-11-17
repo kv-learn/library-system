@@ -54,11 +54,15 @@ public class AuthService(LibraryDbContext dbContext, IPasswordHasher<Member> has
         return Result<AuthResponse>.Ok(CreateResponse(member));
     }
 
-    public Task<MemberDto?> GetMemberAsync(Guid id, CancellationToken ct)
+    public async Task<Result<MemberDto>> GetMemberAsync(Guid id, CancellationToken ct)
     {
-        return dbContext.Members.Where(m => m.Id == id)
-                          .Select(m => new MemberDto(m.Id, m.Email, m.FullName, m.Role))
-                          .FirstOrDefaultAsync(ct);
+        var member = await dbContext.Members.Where(m => m.Id == id)
+            .Select(m => new MemberDto(m.Id, m.Email, m.FullName, m.Role))
+            .FirstOrDefaultAsync(ct);
+
+        return member is null
+            ? Result<MemberDto>.Fail(ErrorType.Unauthorized, "Member no longer exists.")
+            : Result<MemberDto>.Ok(member);
     }
 
     private AuthResponse CreateResponse(Member member)

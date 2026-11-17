@@ -2,7 +2,7 @@ using LibraryApi.Entities;
 
 namespace LibraryApi.Dtos;
 
-public record CreateReservationRequest(Guid BookId, Guid MemberId);
+public record CreateReservationRequest(Guid BookId);
 
 public record ReservationDto(
     Guid Id,

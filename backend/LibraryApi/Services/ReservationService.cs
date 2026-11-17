@@ -3,6 +3,7 @@ using LibraryApi.Entities;
 using LibraryApi.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.Sqlite;
+using System.Linq.Expressions;
 
 namespace LibraryApi.Services;
 
@@ -11,19 +12,38 @@ public class ReservationService(LibraryDbContext context)
     private const int MaxAttempts = 3;
     private static readonly TimeSpan HoldPeriod = TimeSpan.FromDays(3);
 
-    public Task<ReservationDto?> GetByIdAsync(Guid id, CancellationToken ct)
+    public async Task<ReservationDto?> GetByIdAsync(Guid id, Guid requesterId, bool isLibrarian, CancellationToken ct)
     {
-        return context.Reservations
-            .Where(r => r.Id == id)
-            .Select(r => new ReservationDto(
-                r.Id,
-                r.BookId,
-                r.Book.Title,
-                r.MemberId,
-                r.Status,
-                r.CreatedAt,
-                r.ExpiresAt))
-            .FirstOrDefaultAsync(ct);
+        return await context.Reservations.Where(r => r.Id == id && (isLibrarian || r.MemberId == requesterId))
+                                         .Select(ToDtoProjection)
+                                         .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<List<ReservationDto>> GetForMemberAsync(Guid memberId, CancellationToken ct)
+    {
+        return await context.Reservations.Where(r => r.MemberId == memberId)
+                                   .OrderByDescending(r => r.CreatedAt)
+                                   .Select(ToDtoProjection)
+                                   .ToListAsync(ct);
+    }
+
+    public async Task<PagedResult<ReservationDto>> GetAllAsync(ReservationStatus? status, int page, int pageSize, CancellationToken ct)
+    {
+        IQueryable<Reservation> query = context.Reservations;
+        if (status.HasValue)
+        {
+            query = query.Where(r => r.Status == status.Value);
+        }
+
+        var totalCount = await query.CountAsync(ct);
+        var items = await query.OrderByDescending(r => r.CreatedAt)
+                               .ThenBy(r => r.Id)
+                               .Skip((page - 1) * pageSize)
+                               .Take(pageSize)
+                               .Select(ToDtoProjection)
+                               .ToListAsync(ct);
+
+        return new PagedResult<ReservationDto>(items, page, pageSize, totalCount);
     }
 
     public async Task<Result<ReservationDto>> ReserveAsync(Guid bookId, Guid memberId, CancellationToken ct)
@@ -38,8 +58,8 @@ public class ReservationService(LibraryDbContext context)
         }
     }
 
-    public Task<Result<ReservationDto>> CancelAsync(Guid reservationId, CancellationToken ct)
-        => WithConcurrencyRetryAsync(() => TryCancelAsync(reservationId, ct));
+    public Task<Result<ReservationDto>> CancelAsync(Guid reservationId, Guid requesterId, bool isLibrarian, CancellationToken ct)
+        => WithConcurrencyRetryAsync(() => TryCancelAsync(reservationId, requesterId, isLibrarian, ct));
 
 
     private async Task<Result<ReservationDto>> TryReserveAsync(Guid bookId, Guid memberId, CancellationToken ct)
@@ -84,11 +104,11 @@ public class ReservationService(LibraryDbContext context)
         return Result<ReservationDto>.Ok(ToDto(bookReservation, currentBook.Title));
     }
 
-    private async Task<Result<ReservationDto>> TryCancelAsync(Guid reservationId, CancellationToken ct)
+    private async Task<Result<ReservationDto>> TryCancelAsync(Guid reservationId, Guid requesterId, bool isLibrarian, CancellationToken ct)
     {
         var reservation = await context.Reservations
             .Include(r => r.Book)
-            .FirstOrDefaultAsync(r => r.Id == reservationId, ct);
+            .FirstOrDefaultAsync(r => r.Id == reservationId && (isLibrarian || r.MemberId == requesterId), ct);
 
         if (reservation is null)
         {
@@ -128,4 +148,6 @@ public class ReservationService(LibraryDbContext context)
     private ReservationDto ToDto(Reservation r, string bookTitle) =>
         new(r.Id, r.BookId, bookTitle, r.MemberId, r.Status, r.CreatedAt, r.ExpiresAt);
 
+    private static readonly Expression<Func<Reservation, ReservationDto>> ToDtoProjection = r =>
+     new ReservationDto(r.Id, r.BookId, r.Book.Title, r.MemberId, r.Status, r.CreatedAt, r.ExpiresAt);
 }
