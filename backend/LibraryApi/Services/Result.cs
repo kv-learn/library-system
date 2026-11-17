@@ -1,6 +1,6 @@
 namespace LibraryApi.Services;
- 
-public enum ErrorType { NotFound, Conflict }
+
+public enum ErrorType { NotFound, Conflict, Unauthorized }
 
 public record Error(ErrorType Type, string Message);
 
@@ -18,5 +18,6 @@ public sealed class Result<T>
 
     public static Result<T> Ok(T value) => new(value, null);
     public static Result<T> Fail(ErrorType type, string message) => new(default, new Error(type, message));
+    
 
 }

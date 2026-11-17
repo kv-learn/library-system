@@ -3,10 +3,9 @@ using LibraryApi.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LibraryApi.Controllers;
-
-[ApiController]
+        
 [Route("api/reservations")]
-public class ReservationsController(ReservationService registrationService) : ControllerBase
+public class ReservationsController(ReservationService registrationService) : BaseApiController
 {
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ReservationDto>> GetReservation(Guid id, CancellationToken ct)
@@ -46,14 +45,5 @@ public class ReservationsController(ReservationService registrationService) : Co
 
         return ToProblem(result.Error!);
     }
-
-    private ObjectResult ToProblem(Error error)
-    => Problem(statusCode: error.Type switch
-    {
-        ErrorType.NotFound => StatusCodes.Status404NotFound,
-        ErrorType.Conflict => StatusCodes.Status409Conflict,
-        _ => StatusCodes.Status500InternalServerError,
-    },
-       title: error.Message);
 
 }
